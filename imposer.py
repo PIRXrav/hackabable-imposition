@@ -99,8 +99,8 @@ class Imposer:
         self.y_margin = float(self.EXT_MARGIN + self.INT_MARGIN + self.DEC_MARGIN + self.deltaMarginH)
 
         # Taille des cellules
-        self.x_size = finalW + self.DEC_MARGIN + self.deltaMarginW* 2
-        self.y_size = finalH + self.DEC_MARGIN + self.deltaMarginH
+        self.x_size = finalW + self.DEC_MARGIN + self.deltaMarginW * 2
+        self.y_size = finalH + self.DEC_MARGIN + self.deltaMarginH * 2
 
     def computeRealPos(self, x, y, r):
         r = 0;
