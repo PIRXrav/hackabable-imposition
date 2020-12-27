@@ -1,7 +1,14 @@
-#!/usr//bin/env python3
+
 
 """
-    hackabable imposition
+
+    Perform an imposition on the PDF file given in argument.
+
+# Imposition
+
+Imposition consists in the arrangement of the printed product’s pages on the printer’s sheet, in order to obtain faster printing, simplify binding and reduce paper waste (source: http://en.wikipedia.org/wiki/Imposition).
+
+# Printing
 
 |-------------------------------------------------------------------------------
 |                                  EXT
@@ -24,50 +31,50 @@
 
 """
 
+import hackimposition
+import logging
+
+__PRGM__ = "hackimposition"
+__VERSION__ = "1.0.0"
+__AUTHOR__ = "PIRX"
+__COPYRIGHT__ = "(C) 2020-2021 Pierre Ravenel. GNU GPL 3 or later."
+
+LOGGER = logging.getLogger(hackimposition.__name__)
+
 import PyPDF2                   # generic usage
 from fpdf import FPDF           # template creation
 from copy import deepcopy
 
+_TEMPLATE_FILENAME = "template.pdf"
 
 def mmtopt(mm):
     return 2.834645669 * mm
 
-
-class Imposer:
-
-    IN_FILE = "maq_cyan.pdf"        # Nom du fichier d'entréee
-    OUT_FILE = "out.pdf"            # Nom du fichier de sortie
-
-    UNIT = 'pt'                     # self.UNIT # A3 https://papersizes.io/a/a3
-    GLOBAL_W = 1190.7               # Largeur du fichier de sortie
-    GLOBAL_H = 842.0                # Hauteur du fichier de sortie
-
-    INT_MARGIN = mmtopt(5)          # Marge interne
-    EXT_MARGIN = mmtopt(3)          # Marge externe
-    NB_W = 2                        # Nombre de feuille en largeur
-    NB_H = 2                        # Nombre de feuille en hauteur
-
-    DEC_MARGIN = mmtopt(5)          # Marge pour les traits de découpe
-    DEC_LINE_COEF = 0.8             # Espace occupé dans la zone
-    DEC_COLOR = (0, 0, 0)           # Couleur des traits de découpe
-    DEC_KEEP_OVERFLOW = True        # Conservation du surplus de marge
-
-    DISPLAY_DEBUG = False           # Dessine le patron dans le template
-
+class ImposerPageTemplate:
+    """
+    Definition de la géometrie
+    """
     def __init__(self):
-        pass
+        self.UNIT = 'pt'                     # self.UNIT # A3 https://papersizes.io/a/a3
+        self.GLOBAL_W = 1190.7               # Largeur du fichier de sortie
+        self.GLOBAL_H = 842.0                # Hauteur du fichier de sortie
 
-    def pageSize(self, pdf):
-        """ Retourne la taille d'un PyPDF2 """
-        return (float(pdf.getPage(0).mediaBox.lowerRight[0] -
-                      pdf.getPage(0).mediaBox.lowerLeft[0]),
-                float(pdf.getPage(0).mediaBox.upperRight[1] -
-                      pdf.getPage(0).mediaBox.lowerRight[1]))
+        self.INT_MARGIN = mmtopt(5)          # Marge interne
+        self.EXT_MARGIN = mmtopt(3)          # Marge externe
+        self.NB_W = 2                        # Nombre de feuille en largeur
+        self.NB_H = 2                        # Nombre de feuille en hauteur
 
-    def compute0utputPageSize(self, nb_pages):
-        return (nb_pages // 16) * 2 + int((nb_pages % 16) > 0) * 2
+        self.DEC_MARGIN = mmtopt(5)          # Marge pour les traits de découpe
+        self.DEC_LINE_COEF = 0.8             # Espace occupé dans la zone
+        self.DEC_COLOR = (0, 0, 0)           # Couleur des traits de découpe
+        self.DEC_KEEP_OVERFLOW = True        # Conservation du surplus de marge
+
+        self.DISPLAY_DEBUG = False           # Dessine le patron dans le template
 
     def computeInternals(self, iniW, iniH):
+        self.iniW = iniW
+        self.iniH = iniH
+
         totalDEC_MARGINW = self.DEC_MARGIN * (self.NB_W + 1)
         totalDEC_MARGINH = self.DEC_MARGIN * (self.NB_H + 1)
 
@@ -82,7 +89,7 @@ class Imposer:
 
         scaleW =  (float(finalWmax) - 2. * self.INT_MARGIN) / float(iniW * 2)
         scaleH = (float(finalHmax) - 2. * self.INT_MARGIN) / float(iniH)
-        self.scale = min(scaleW, scaleH)             # scale IMG
+        self.scale = min(scaleW, scaleH)             # scale IMG (maximisation)
 
         self.dataW = float(iniW * 2) * self.scale
         self.dataH = float(iniH) * self.scale
@@ -102,9 +109,14 @@ class Imposer:
         self.x_size = finalW + self.DEC_MARGIN + self.deltaMarginW * 2
         self.y_size = finalH + self.DEC_MARGIN + self.deltaMarginH * 2
 
+        if(self.scale < 0):
+            LOGGER.error(f"\tToo small page : scale={self.scale}<0")
+        if(self.scale != 1):
+            LOGGER.warning(f"\tW/H={self.iniW}/{self.iniH} ==> {self.dataW/2}/{self.dataH}")
+            LOGGER.warning(f"\tSCALE: {self.scale}")
+
     def computeRealPos(self, x, y, r):
         r = 0;
-
         pos_mat = [(round(x//2) + r) * self.x_size +  self.dataW/2 * int(x % 2 != 0) + self.x_margin,
                    (float(y) + r) * self.y_size + self.y_margin]
         sr = -1 if r else 1
@@ -214,8 +226,36 @@ class Imposer:
 
         pdf.output(namefile, 'F')
 
-    def computeIndexPos(self, index, nb_pages):
-        assert(index <= nb_pages - 1)
+    def log(self):
+        LOGGER.debug(f"\tOutSize    : W/H = {self.GLOBAL_W}/{self.GLOBAL_H} pt")
+        LOGGER.debug(f"\tMargin INT : {self.INT_MARGIN} pt")
+        LOGGER.debug(f"\tMargin DEC : {self.DEC_MARGIN} pt @ {self.DEC_LINE_COEF*100}/100")
+        LOGGER.debug(f"\tMargin EXT : {self.EXT_MARGIN} pt")
+        LOGGER.debug(f"\tOverflow   : {self.DEC_KEEP_OVERFLOW}")
+        LOGGER.debug(f"\tDebug      : {self.DISPLAY_DEBUG}")
+
+
+class ImposerAlgo:
+    """
+        Algorithme d'imposition
+        (i, inNbPages) ---> (x, y, outIndexPage)
+        inNbPages ---> outNbPages
+    """
+    def __init__(self, nbW, nbH, method=None):
+        self.nbW = nbW                        # nbW
+        self.nbH = nbH                        # nbH
+        self.K = self.nbW * 2 * self.nbH      # blocks de K pages
+
+    def computeInternals(self, nb_pages):
+        self.nbInPages = nb_pages
+        self.nbOutPages = (nb_pages // 16) * 2 + int((nb_pages % 16) > 0) * 2
+
+    def getNbOutPages(self):
+        return self.nbOutPages
+
+    def computeIndexPos(self, index):
+        """ Retourne la position impose """
+        assert(index <= self.nbInPages - 1)
         # (page{O 1}, x, y)
         # https://app.lib.uliege.be/guide_catalo/wp-content/uploads/2020/05/Identificationdesformats.pdf
         # Table pliage OK
@@ -238,99 +278,80 @@ class Imposer:
                (1, 1, 1), (0, 2, 1),
                (1, 3, 1), (0, 0, 1)]
 
-        mb = index < nb_pages // 2  # begin or end
-        index = index if mb else nb_pages - index - 1  # normalised index
+        mb = index < self.nbInPages // 2  # begin or end
+        index = index if mb else self.nbInPages - index - 1  # normalised index
         page_offset, x, y = tab[index % 8] if mb else tab[15 - index % 8]
         page = (index // 8)*2 + page_offset
+        assert(page < self.nbOutPages)
         r = int(y == 1)  # rotation ?
         return (page, x, y, r)
 
-    def impose(self):
+def _pageSize(pdf):
+    """ Retourne la taille d'un PyPDF2 """
+    return (float(pdf.getPage(0).mediaBox.lowerRight[0] -
+                  pdf.getPage(0).mediaBox.lowerLeft[0]),
+            float(pdf.getPage(0).mediaBox.upperRight[1] -
+                  pdf.getPage(0).mediaBox.lowerRight[1]))
 
-        print(f">>> Config")
-        print(f"\tInfile     : {self.IN_FILE}")
-        print(f"\tOutfile    : {self.OUT_FILE}")
-        print(f"\tOutSize    : W/H = {self.GLOBAL_W}/{self.GLOBAL_H} pt")
-        print(f"\tMargin INT : {self.INT_MARGIN} pt")
-        print(f"\tMargin DEC : {self.DEC_MARGIN} pt @ {self.DEC_LINE_COEF*100}/100")
-        print(f"\tMargin EXT : {self.EXT_MARGIN} pt")
-        print(f"\tOverflow   : {self.DEC_KEEP_OVERFLOW}")
-        print(f"\tDebug      : {self.DISPLAY_DEBUG}")
+def _readPdf(filename):
+    pdf = PyPDF2.PdfFileReader(filename)
+    width, height = _pageSize(pdf)
+    nbPages = pdf.getNumPages()
+    for titre, elem in pdf.getDocumentInfo().items():
+        LOGGER.debug("\t" + titre + ":" + elem)
+    LOGGER.debug(f"\tnb_pages: {nbPages}")
+    LOGGER.debug(f"\tWidth:{width} height:{height}")
+    return (pdf, width, height, nbPages)
 
-        print(f">>> Parse {self.IN_FILE}")
-        in_pdf = PyPDF2.PdfFileReader(self.IN_FILE)
-        width, height = self.pageSize(in_pdf)
-        in_size = in_pdf.getNumPages()
-        for titre, elem in in_pdf.getDocumentInfo().items():
-            print("\t" + titre + ":" + elem)
-        print(f"\tnb_pages: {in_size}")
-        print(f"\tWidth:{width} height:{height}")
+def impose(template, imposer, infile, outfile):
+    IN_FILE = infile                # Nom du fichier d'entréee
+    OUT_FILE = outfile              # Nom du fichier de sortie
 
-        print(f">>> Initialisation config avec {self.IN_FILE}")
-        self.computeInternals(width, height)
+    LOGGER.info(f">>> Config")
+    LOGGER.debug(f"\tInfile     : {IN_FILE}")
+    LOGGER.debug(f"\tOutfile    : {OUT_FILE}")
+    template.log()
 
-        templateFilename = "template.pdf"
-        print(f">>> Create template file")
-        self.createTemplate(templateFilename)
-        print(f"\tW/H={width}/{height} ==> {self.dataW/2}/{self.dataH}")
-        print(f"\tSCALE: {self.scale}")
+    LOGGER.info(f">>> Parse {IN_FILE}")
+    inPdf, inWidth, inHeight, inNbPages = _readPdf(IN_FILE)
 
-        print(f">>> Reopen template file")
-        template_pdf = PyPDF2.PdfFileReader(templateFilename)
-        template_page = template_pdf.getPage(0)
-        mes_w, mes_h = self.pageSize(template_pdf)  # Check sizes
-        assert(mes_w == self.GLOBAL_W)
-        assert(mes_h == self.GLOBAL_H)
+    LOGGER.info(f">>> Initialisation template")
+    template.computeInternals(inWidth, inHeight)
 
-        print(f">>> Init out_pdf pdf")
-        out_pdf = PyPDF2.PdfFileWriter()
-        for _ in range(self.compute0utputPageSize(in_size)):
-            out_pdf.addPage(deepcopy(template_page))
+    LOGGER.info(f">>> Initialisation algorithme")
+    imposer.computeInternals(inNbPages)
 
-        print(f">>> Imposition [", end="", flush=True)
-        for i in range(in_size):
-            ipage, x, y, r = self.computeIndexPos(i, in_size)
-            print(".", end='', flush=True)
-            pos = self.computeRealPos(x, y, r)
-            out_pdf.getPage(ipage).mergeTransformedPage(in_pdf.getPage(i), pos)
-        print("] Done")
+    LOGGER.info(f">>> Create template file")
+    template.createTemplate(_TEMPLATE_FILENAME)
 
-        print(f">>> write out in {self.OUT_FILE}")
-        out_pdf.addMetadata(
-            {'/Title': f'{self.IN_FILE}.imposed.pdf',
-             '/Producer': "Imposer"})
-        with open(self.OUT_FILE, 'wb') as fh:
-            out_pdf.write(fh)
+    LOGGER.info(f">>> Reopen template file")
+    templatePdf, w, h, _ = _readPdf(_TEMPLATE_FILENAME)
+    templatePage = templatePdf.getPage(0)
+    assert(w == template.GLOBAL_W)
+    assert(h == template.GLOBAL_H)
 
-        print(f">>> Check {self.OUT_FILE}")
-        pdf = PyPDF2.PdfFileReader(self.OUT_FILE)
-        width, height = self.pageSize(pdf)
-        in_size = pdf.getNumPages()
-        for titre, elem in pdf.getDocumentInfo().items():
-            print("\t" + titre + ":" + elem)
-        print(f"\tnb_pages: {in_size}")
-        print(f"\tWidth:{width} height:{height}")
+    LOGGER.info(f">>> Init outPdf pdf")
+    outPdf = PyPDF2.PdfFileWriter()
+    for _ in range(imposer.getNbOutPages()):
+        outPdf.addPage(deepcopy(templatePage))
 
-        print(f">>> DONE")
+    LOGGER.info(f">>> Imposition")
+    for i in range(imposer.nbInPages):
+        ipage, x, y, r = imposer.computeIndexPos(i)
+        pos = template.computeRealPos(x, y, r)
+        outPdf.getPage(ipage).mergeTransformedPage(inPdf.getPage(i), pos)
+        LOGGER.debug(f"\t[{i}/{imposer.nbInPages}]" +
+                     f"({i})->(page:{ipage}, x:{x}, y:{y}, r:{r})")
 
 
-if __name__ == '__main__':
-    import argparse
-    imposer = Imposer()
+    LOGGER.info(f">>> write out in {OUT_FILE}")
+    outPdf.addMetadata(
+        {'/Title': f'{IN_FILE}.imposed.pdf',
+         '/Producer': "Imposer"})
+    with open(OUT_FILE, 'wb') as fh:
+        outPdf.write(fh)
 
-    print(__doc__)
-    parser = argparse.ArgumentParser(prog="Imposer",
-                                     epilog="Toutes les unités sont en pt")
-    parser.add_argument('IN_FILE', help="nom du fichier d'entrée")
-    parser.add_argument('--OUT_FILE', default="out.pdf", help="nom du fichier de sortie")
-    parser.add_argument('--GLOBAL_W', type=float, help="largeur du fichier de sortie")
-    parser.add_argument('--GLOBAL_H',type=float,  help="Hauteur du fichier de sortie")
-    parser.add_argument('--INT_MARGIN', type=float, help="marge interne")
-    parser.add_argument('--EXT_MARGIN', type=float, help="marge externe")
-    parser.add_argument('--DEC_MARGIN', type=float, help="marge pour les guides de découpe")
-    parser.add_argument('--DEC_LINE_COEF', type=float, help="espace occupé dans la zone de decoupe")
-    parser.add_argument('--DEC_KEEP_OVERFLOW', type=int, choices=range(0, 2), help="conservation du surplus de marge en marge INT")
-    parser.add_argument('--DISPLAY_DEBUG', type=int, choices=range(0, 2), help="Dessine le patron dans le template")
-    parser.parse_args(namespace=imposer)
+    LOGGER.info(f">>> Check {OUT_FILE}")
+    _readPdf(OUT_FILE)
 
-    imposer.impose()
+    LOGGER.info(f">>> DONE")
