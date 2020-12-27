@@ -31,21 +31,19 @@ Imposition consists in the arrangement of the printed product’s pages on the p
 
 """
 
-import hackimposition
-import logging
-
 __PRGM__ = "hackimposition"
 __VERSION__ = "1.0.0"
 __AUTHOR__ = "PIRX"
 __COPYRIGHT__ = "(C) 2020-2021 Pierre Ravenel. GNU GPL 3 or later."
 
-LOGGER = logging.getLogger(hackimposition.__name__)
-
+import hackimposition
+import logging
 import PyPDF2                   # generic usage
 from fpdf import FPDF           # template creation
 from copy import deepcopy
 
 _TEMPLATE_FILENAME = "template.pdf"
+logger = logging.getLogger(hackimposition.__name__)
 
 def mmtopt(mm):
     return 2.834645669 * mm
@@ -110,10 +108,10 @@ class ImposerPageTemplate:
         self.y_size = finalH + self.DEC_MARGIN + self.deltaMarginH * 2
 
         if(self.scale < 0):
-            LOGGER.error(f"\tToo small page : scale={self.scale}<0")
+            logger.error(f"\tToo small page : scale={self.scale}<0")
         if(self.scale != 1):
-            LOGGER.warning(f"\tW/H={self.iniW}/{self.iniH} ==> {self.dataW/2}/{self.dataH}")
-            LOGGER.warning(f"\tSCALE: {self.scale}")
+            logger.warning(f"\tW/H={self.iniW}/{self.iniH} ==> {self.dataW/2}/{self.dataH}")
+            logger.warning(f"\tSCALE: {self.scale}")
 
     def computeRealPos(self, x, y, r):
         r = 0;
@@ -227,12 +225,12 @@ class ImposerPageTemplate:
         pdf.output(namefile, 'F')
 
     def log(self):
-        LOGGER.debug(f"\tOutSize    : W/H = {self.GLOBAL_W}/{self.GLOBAL_H} pt")
-        LOGGER.debug(f"\tMargin INT : {self.INT_MARGIN} pt")
-        LOGGER.debug(f"\tMargin DEC : {self.DEC_MARGIN} pt @ {self.DEC_LINE_COEF*100}/100")
-        LOGGER.debug(f"\tMargin EXT : {self.EXT_MARGIN} pt")
-        LOGGER.debug(f"\tOverflow   : {self.DEC_KEEP_OVERFLOW}")
-        LOGGER.debug(f"\tDebug      : {self.DISPLAY_DEBUG}")
+        logger.debug(f"\tOutSize    : W/H = {self.GLOBAL_W}/{self.GLOBAL_H} pt")
+        logger.debug(f"\tMargin INT : {self.INT_MARGIN} pt")
+        logger.debug(f"\tMargin DEC : {self.DEC_MARGIN} pt @ {self.DEC_LINE_COEF*100}/100")
+        logger.debug(f"\tMargin EXT : {self.EXT_MARGIN} pt")
+        logger.debug(f"\tOverflow   : {self.DEC_KEEP_OVERFLOW}")
+        logger.debug(f"\tDebug      : {self.DISPLAY_DEBUG}")
 
 
 class ImposerAlgo:
@@ -298,60 +296,57 @@ def _readPdf(filename):
     width, height = _pageSize(pdf)
     nbPages = pdf.getNumPages()
     for titre, elem in pdf.getDocumentInfo().items():
-        LOGGER.debug("\t" + titre + ":" + elem)
-    LOGGER.debug(f"\tnb_pages: {nbPages}")
-    LOGGER.debug(f"\tWidth:{width} height:{height}")
+        logger.debug("\t" + titre + ":" + elem)
+    logger.debug(f"\tnb_pages: {nbPages}")
+    logger.debug(f"\tWidth:{width} height:{height}")
     return (pdf, width, height, nbPages)
 
 def impose(template, imposer, infile, outfile):
-    IN_FILE = infile                # Nom du fichier d'entréee
-    OUT_FILE = outfile              # Nom du fichier de sortie
-
-    LOGGER.info(f">>> Config")
-    LOGGER.debug(f"\tInfile     : {IN_FILE}")
-    LOGGER.debug(f"\tOutfile    : {OUT_FILE}")
+    logger.info(f">>> Config")
+    logger.debug(f"\tInfile     : {infile}")
+    logger.debug(f"\tOutfile    : {outfile}")
     template.log()
 
-    LOGGER.info(f">>> Parse {IN_FILE}")
-    inPdf, inWidth, inHeight, inNbPages = _readPdf(IN_FILE)
+    logger.info(f">>> Parse {infile}")
+    inPdf, inWidth, inHeight, inNbPages = _readPdf(infile)
 
-    LOGGER.info(f">>> Initialisation template")
+    logger.info(f">>> Initialisation template")
     template.computeInternals(inWidth, inHeight)
 
-    LOGGER.info(f">>> Initialisation algorithme")
+    logger.info(f">>> Initialisation algorithme")
     imposer.computeInternals(inNbPages)
 
-    LOGGER.info(f">>> Create template file")
+    logger.info(f">>> Create template file")
     template.createTemplate(_TEMPLATE_FILENAME)
 
-    LOGGER.info(f">>> Reopen template file")
+    logger.info(f">>> Reopen template file")
     templatePdf, w, h, _ = _readPdf(_TEMPLATE_FILENAME)
     templatePage = templatePdf.getPage(0)
     assert(w == template.GLOBAL_W)
     assert(h == template.GLOBAL_H)
 
-    LOGGER.info(f">>> Init outPdf pdf")
+    logger.info(f">>> Init outPdf pdf")
     outPdf = PyPDF2.PdfFileWriter()
     for _ in range(imposer.getNbOutPages()):
         outPdf.addPage(deepcopy(templatePage))
 
-    LOGGER.info(f">>> Imposition")
+    logger.info(f">>> Imposition")
     for i in range(imposer.nbInPages):
         ipage, x, y, r = imposer.computeIndexPos(i)
         pos = template.computeRealPos(x, y, r)
         outPdf.getPage(ipage).mergeTransformedPage(inPdf.getPage(i), pos)
-        LOGGER.debug(f"\t[{i}/{imposer.nbInPages}]" +
+        logger.debug(f"\t[{i}/{imposer.nbInPages}]" +
                      f"({i})->(page:{ipage}, x:{x}, y:{y}, r:{r})")
 
 
-    LOGGER.info(f">>> write out in {OUT_FILE}")
+    logger.info(f">>> write out in {outfile}")
     outPdf.addMetadata(
-        {'/Title': f'{IN_FILE}.imposed.pdf',
-         '/Producer': "Imposer"})
-    with open(OUT_FILE, 'wb') as fh:
+        {'/Title': f"imposition from {infile}",
+         '/Creator': __PRGM__ + " " + __VERSION__ + " " + __COPYRIGHT__})
+    with open(outfile, 'wb') as fh:
         outPdf.write(fh)
 
-    LOGGER.info(f">>> Check {OUT_FILE}")
-    _readPdf(OUT_FILE)
+    logger.info(f">>> Check {outfile}")
+    _readPdf(outfile)
 
-    LOGGER.info(f">>> DONE")
+    logger.info(f">>> DONE")
