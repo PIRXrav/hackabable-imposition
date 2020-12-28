@@ -33,8 +33,9 @@ Imposition consists in the arrangement of the printed product’s pages on the p
 
 __PRGM__ = "hackimposition"
 __VERSION__ = "1.0.0"
-__AUTHOR__ = "PIRX"
+__AUTHOR__ = "Pierre Ravenel"
 __COPYRIGHT__ = "(C) 2020-2021 Pierre Ravenel. GNU GPL 3 or later."
+__DESCRIPTION__ = "Perform imposition of a PDF file."
 
 from copy import deepcopy
 from itertools import product
