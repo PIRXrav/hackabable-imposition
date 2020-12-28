@@ -1,5 +1,3 @@
-# pylint: disable=C0321, C0103, W1203
-
 """ Options from cmd line """
 
 import logging

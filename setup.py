@@ -1,12 +1,14 @@
-import setuptools
+# pylint: disable=missing-function-docstring, missing-module-docstring
+
 import codecs
 import os.path
+import setuptools
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-init_path = "hackimposition/__init__.py"
-requirements_path = "requirements.txt"
+INIT_PATH = "hackimposition/__init__.py"
+REQ_PATH = "requirements.txt"
 
 # https://packaging.python.org/guides/single-sourcing-package-version/
 def read(rel_path):
@@ -15,14 +17,13 @@ def read(rel_path):
         return fp.read()
 
 def extract(definition):
-    for line in read(init_path).splitlines():
+    for line in read(INIT_PATH).splitlines():
         if line.startswith(definition):
             delim = '"' if '"' in line else "'"
             return line.split(delim)[1]
-    else:
-        raise RuntimeError("Unable to find version string.")
+    raise RuntimeError("Unable to find version string.")
 
-with open(requirements_path) as f:
+with open(REQ_PATH) as f:
     required = f.read().splitlines()
 
 

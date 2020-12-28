@@ -1,5 +1,3 @@
-# pylint: disable=C0321, C0103, W1203
-
 """
 
     Perform an imposition on the PDF file given in argument.
@@ -52,6 +50,56 @@ def mmtopt(val_mm):
     return 2.834645669 * val_mm
 
 
+class FPDFWrapper(FPDF):
+    """ Wrapper FPDF for line drawing """
+
+    def __init__(self, unit, width, height):
+        """ wrapper """
+        super().__init__('P', unit, (width, height))
+        self.width = width
+        self.height = height
+
+    def xline(self, y):
+        """ draw x line """
+        self.line(0, y, self.width, y)
+
+    def yline(self, x):
+        """ draw y line """
+        self.line(x, 0, x, self.height)
+
+    def cutlinex(self, y):
+        """ draw cutline x line """
+        self.set_draw_color(0, 0, 255)
+        self.line(0, y, self.width, y)
+
+    def cutliney(self, x):
+        """ draw cutline y line """
+        self.set_draw_color(0, 0, 255)
+        self.line(x, 0, x, self.height)
+
+    def indlinex(self, y, r=0.8):
+        """ draw margin x line """
+        self.set_draw_color(126, 126, 0)
+        self.dashed_line(0, y, self.width, y, 10 * r, 10 * (1 - r))
+
+    def indliney(self, x, r=0.8):
+        """ draw cutline y line """
+        self.set_draw_color(126, 126, 0)
+        self.dashed_line(x, 0, x, self.height, 10 * r, 10 * (1 - r))
+
+    def hirondelle(self, x, y, lx, ly, coef, color):
+        """
+        draw  hirondelle
+        https://fr.wikipedia.org/wiki/Hirondelle_(imprimerie)
+        """
+        self.set_draw_color(*color)
+        self.line(x, y + coef * ly, x, y + ly - coef * ly)
+        self.line(x + coef* lx, y, x + lx - coef * lx, y)
+        C = abs(lx) / 2
+        self.ellipse(x + lx / 2 - C / 2, y + ly / 2 - C / 2, C, C)
+
+
+# pylint: disable=too-many-instance-attributes
 class ImposerPageTemplate:
     """
     Definition de la géometrie
@@ -109,9 +157,9 @@ class ImposerPageTemplate:
         final_wmax = tcswmax / self.nb_w  # W cell max
         final_hmax = tcshmax / self.nb_h  # H cell max
 
-        scale_w = (float(final_wmax) - 2. * self.int_margin) / float(ini_w * 2)
-        scale_h = (float(final_hmax) - 2. * self.int_margin) / float(ini_h)
-        self.scale = min(scale_w, scale_h)             # scale IMG (maximisation)
+        scale_w = (final_wmax - 2. * self.int_margin) / (ini_w * 2)
+        scale_h = (final_hmax - 2. * self.int_margin) / ini_h
+        self.scale = min(scale_w, scale_h)  # scale IMG (maximisation)
 
         self.data_w = float(ini_w * 2) * self.scale
         self.data_h = float(ini_h) * self.scale
@@ -160,108 +208,67 @@ class ImposerPageTemplate:
 
     def create_template(self, namefile):
         """ Create template pdf from self """
-        pdf = FPDF('P', self.unit, (self.global_w, self.global_h))
+        pdf = FPDFWrapper(self.unit, self.global_w, self.global_h)
         pdf.add_page()
 
-        # r = 0
 
-        def xline(y):
-            pdf.line(0, y, self.global_w, y)
-
-        def yline(x):
-            pdf.line(x, 0, x, self.global_h)
-
-        def cutlinex(y):
-            pdf.set_draw_color(0, 0, 255)
-            pdf.line(0, y, self.global_w, y)
-
-        def cutliney(x):
-            pdf.set_draw_color(0, 0, 255)
-            pdf.line(x, 0, x, self.global_h)
-
-        def indlinex(y, r=0.8):
-            pdf.set_draw_color(126, 126, 0)
-            pdf.dashed_line(0, y, self.global_w, y, 10 * r, 10 * (1 - r))
-
-        def indliney(x, r=0.8):
-            pdf.set_draw_color(126, 126, 0)
-            pdf.dashed_line(x, 0, x, self.global_h, 10 * r, 10 * (1 - r))
-
-        def hirondelle(x, y, lx, ly):
-            """ https://fr.wikipedia.org/wiki/Hirondelle_(imprimerie) """
-            pdf.set_draw_color(*self.dec_color)
-            pdf.line(x, y + self.dec_line_coef * ly, x,
-                     y + ly - self.dec_line_coef * ly)
-            pdf.line(x + self.dec_line_coef * lx, y,
-                     x + lx - self.dec_line_coef * lx, y)
-            C = abs(lx) / 2
-            pdf.ellipse(x + lx / 2 - C / 2, y + ly / 2 - C / 2, C, C)
-
-        def display_lines():
+        if self.display_debug:
             pdf.set_draw_color(255, 0, 0)
-            xline(self.ext_margin)
-            xline(self.global_h - self.ext_margin)
-            yline(self.ext_margin)
-            yline(self.global_w - self.ext_margin)
+            pdf.xline(self.ext_margin)
+            pdf.xline(self.global_h - self.ext_margin)
+            pdf.yline(self.ext_margin)
+            pdf.yline(self.global_w - self.ext_margin)
 
-            pdf.set_draw_color(0, 255, 0)
-            for x in range(self.nb_w):
-                x *= 2
-                tab = self.compute_real_pos(x, 0, 0)
+            for i_x in range(0, self.nb_w * 2, 2):
+                tab = self.compute_real_pos(i_x, 0, 0)
                 x = tab[4]
                 y = tab[5]
-                indliney(x - self.delta_marj_w -
+                pdf.indliney(x - self.delta_marj_w -
                          self.int_margin - self.dec_margin)
-                cutliney(x - self.delta_marj_w - self.int_margin)
-                indliney(x - self.int_margin, r=0.2)
-                indliney(x)
-                indliney(x + self.data_w)
-                indliney(x + self.data_w + self.int_margin, r=0.2)
-                cutliney(x + self.data_w + self.delta_marj_w + self.int_margin)
-                indliney(x + self.data_w + self.delta_marj_w +
+                pdf.cutliney(x - self.delta_marj_w - self.int_margin)
+                pdf.indliney(x - self.int_margin, r=0.2)
+                pdf.indliney(x)
+                pdf.indliney(x + self.data_w)
+                pdf.indliney(x + self.data_w + self.int_margin, r=0.2)
+                pdf.cutliney(x + self.data_w + self.delta_marj_w + self.int_margin)
+                pdf.indliney(x + self.data_w + self.delta_marj_w +
                          self.int_margin + self.dec_margin)
-                indliney(x + self.data_w / 2)
+                pdf.indliney(x + self.data_w / 2)
 
             for y in range(self.nb_w):
                 tab = self.compute_real_pos(0, y, 0)
                 x = tab[4]
                 y = tab[5]
-                indlinex(y - self.delta_marj_h -
+                pdf.indlinex(y - self.delta_marj_h -
                          self.int_margin - self.dec_margin)
-                cutlinex(y - self.delta_marj_h - self.int_margin)
-                indlinex(y - self.int_margin, r=0.2)
-                indlinex(y)
-                indlinex(y + self.data_h)
-                indlinex(y + self.data_h + self.int_margin, r=0.2)
-                cutlinex(y + self.data_h + self.delta_marj_h + self.int_margin)
-                indlinex(y + self.data_h + self.delta_marj_h +
+                pdf.cutlinex(y - self.delta_marj_h - self.int_margin)
+                pdf.indlinex(y - self.int_margin, r=0.2)
+                pdf.indlinex(y)
+                pdf.indlinex(y + self.data_h)
+                pdf.indlinex(y + self.data_h + self.int_margin, r=0.2)
+                pdf.cutlinex(y + self.data_h + self.delta_marj_h + self.int_margin)
+                pdf.indlinex(y + self.data_h + self.delta_marj_h +
                          self.int_margin + self.dec_margin)
 
-        def display_hirondelles():
-            # for all cell
-            for ix, iy in product(range(self.nb_w), range(self.nb_w)):
-                tab = self.compute_real_pos(ix * 2, iy, 0)
-                x = tab[4]
-                y = tab[5]
-                realMargH = self.int_margin + \
-                    (self.delta_marj_h if self.dec_keep_overflow else 0)
-                realMargW = self.int_margin + \
-                    (self.delta_marj_w if self.dec_keep_overflow else 0)
-                ly = y - realMargH
-                hy = y + self.data_h + realMargH
-                lx = x - realMargW
-                hx = x + self.data_w + realMargW
-                L = self.dec_margin
-                hirondelle(lx, ly, -L, -L)
-                hirondelle(lx, hy, -L, L)
-                hirondelle(hx, ly, L, -L)
-                hirondelle(hx, hy, L, L)
-
-        if self.display_debug:
-            display_lines()
-
-        display_hirondelles()
-
+        # display_hirondelles
+        # for all cell
+        for i_x, i_y in product(range(0, self.nb_w * 2, 2), range(self.nb_w)):
+            tab = self.compute_real_pos(i_x, i_y, 0)
+            x = tab[4]
+            y = tab[5]
+            real_marg_h = self.int_margin + \
+                (self.delta_marj_h if self.dec_keep_overflow else 0)
+            real_marg_w = self.int_margin + \
+                (self.delta_marj_w if self.dec_keep_overflow else 0)
+            l_y = y - real_marg_h
+            h_y = y + self.data_h + real_marg_h
+            l_x = x - real_marg_w
+            h_x = x + self.data_w + real_marg_w
+            C = self.dec_margin
+            pdf.hirondelle(l_x, l_y, -C, -C, self.dec_line_coef, self.dec_color)
+            pdf.hirondelle(l_x, h_y, -C, C, self.dec_line_coef, self.dec_color)
+            pdf.hirondelle(h_x, l_y, C, -C, self.dec_line_coef, self.dec_color)
+            pdf.hirondelle(h_x, h_y, C, C, self.dec_line_coef, self.dec_color)
 
         pdf.output(namefile, 'F')
 
@@ -284,10 +291,10 @@ class ImposerAlgo:
         in_nb_pages ---> outnb_pages
     """
 
-    def __init__(self, nbW, nbH, method=None):
-        self.nbW = nbW                        # nbW
-        self.nbH = nbH                        # nbH
-        self.K = self.nbW * 2 * self.nbH      # blocks de K pages
+    def __init__(self, nb_w, nb_h, method=None):
+        self.nb_w = nb_w                              # nb_w
+        self.nb_h = nb_h                              # nb_h
+        self.nb_cell = self.nb_w * 2 * self.nb_h      # nb cell
         self.nb_in_pages = None
         self.nb_out_pages = None
         method = method if method else None   # TODO
@@ -297,9 +304,6 @@ class ImposerAlgo:
         self.nb_in_pages = nb_pages
         self.nb_out_pages = (nb_pages // 16) * 2 + int((nb_pages % 16) > 0) * 2
 
-    def get_nb_out_pages(self):
-        """ return nb out pages """
-        return self.nb_out_pages
 
     def compute_index_pos(self, index):
         """ Retourne la position impose """
@@ -331,8 +335,8 @@ class ImposerAlgo:
         page_offset, x, y = tab[index % 8] if half else tab[15 - index % 8]
         page = (index // 8) * 2 + page_offset
         assert page < self.nb_out_pages
-        r = int(y == 1)  # rotation ?
-        return (page, x, y, r)
+        rotate = int(y == 1)  # rotation ?
+        return (page, x, y, rotate)
 
 
 def _page_size(pdf):
@@ -353,6 +357,18 @@ def _read_pdf(filename):
     logger.debug(f"\tWidth:{width} height:{height}")
     return (pdf, width, height, nb_pages)
 
+def _perform_imposition(imposer, template, in_pdf, template_pdf):
+    out_pdf = PyPDF2.PdfFileWriter()
+    for _ in range(imposer.nb_out_pages):
+        out_pdf.addPage(deepcopy(template_pdf.getPage(0)))
+
+    for i in range(imposer.nb_in_pages):
+        ipage, x, y, rotate = imposer.compute_index_pos(i)
+        pos = template.compute_real_pos(x, y, rotate)
+        out_pdf.getPage(ipage).mergeTransformedPage(in_pdf.getPage(i), pos)
+        logger.debug(f"\t[{i}/{imposer.nb_in_pages}]" +
+                     f"({i})->(page:{ipage}, x:{x}, y:{y}, r:{rotate})")
+    return out_pdf
 
 def impose(template, imposer, infile, outfile):
     """ main func : impose infile """
@@ -362,10 +378,10 @@ def impose(template, imposer, infile, outfile):
     template.log()
 
     logger.info(f">>> Parse {infile}")
-    inPdf, inWidth, inHeight, in_nb_pages = _read_pdf(infile)
+    in_pdf, in_width, in_height, in_nb_pages = _read_pdf(infile)
 
     logger.info(">>> Initialisation template")
-    template.compute_internals(inWidth, inHeight)
+    template.compute_internals(in_width, in_height)
 
     logger.info(">>> Initialisation algorithme")
     imposer.compute_internals(in_nb_pages)
@@ -378,25 +394,14 @@ def impose(template, imposer, infile, outfile):
     assert w == template.global_w
     assert h == template.global_h
 
-    logger.info(f">>> Init {outfile}")
-    out_pdf = PyPDF2.PdfFileWriter()
-    for _ in range(imposer.get_nb_out_pages()):
-        out_pdf.addPage(deepcopy(template_pdf.getPage(0)))
-
-    logger.info(">>> Imposition")
-    for i in range(imposer.nb_in_pages):
-        ipage, x, y, r = imposer.compute_index_pos(i)
-        pos = template.compute_real_pos(x, y, r)
-        out_pdf.getPage(ipage).mergeTransformedPage(inPdf.getPage(i), pos)
-        logger.debug(f"\t[{i}/{imposer.nb_in_pages}]" +
-                     f"({i})->(page:{ipage}, x:{x}, y:{y}, r:{r})")
-
-    logger.info(f">>> write out in {outfile}")
+    logger.info(f">>> Imposition {outfile}")
+    out_pdf = _perform_imposition(imposer, template, in_pdf, template_pdf)
+    logger.info(f">>> Write{outfile}")
     out_pdf.addMetadata(
         {'/Title': f"imposition from {infile}",
          '/Creator': __PRGM__ + " " + __VERSION__ + " " + __COPYRIGHT__})
-    with open(outfile, 'wb') as fh:
-        out_pdf.write(fh)
+    with open(outfile, 'wb') as file:
+        out_pdf.write(file)
 
     logger.info(f">>> Check {outfile}")
     _read_pdf(outfile)

@@ -1,0 +1,18 @@
+[MASTER]
+
+[MESSAGES CONTROL]
+
+disable=logging-fstring-interpolation
+
+[BASIC]
+
+# Good variable names which should always be accepted, separated by a comma.
+good-names=i, j, k, l, m, n, o, p, q, r,
+           ex,
+           Run,
+           w, h,
+           x, y,
+           c, C,
+           fp,
+           lx, ly,
+           _
